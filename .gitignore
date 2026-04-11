@@ -1,0 +1,72 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C# / Visual Studio
+bin/
+obj/
+.vs/
+*.sln.docstates
+*.user
+*.userosscache
+*.sln.VisualStateFile
+*.suo
+*.csproj.user
+*.vbproj.user
+*.vcxproj.user
+*.vcxproj.filters
+*.vcxproj.user
+*.VC.db
+*.VC.VC.opendb
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+
+# Visual Studio cache/options
+.vs/
+
+# Rider IDE
+.idea/
+*.sln.iml
+*.jb2312
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+
+# Visual Studio cache/options
+.vs/
+
+# Test Results
+TestResults/
+*.trx
+
+# Resharper
+_ReSharper*/
+*.[Rr]esharper
+*.DotSettings.user
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# IDE Files
+.vscode/
+*.code-workspace
