@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
+using System;
 using System.Drawing;
-using System.Linq;
-using System.Text;
 using System.Windows.Forms;
 using System.Diagnostics;
 
@@ -21,34 +16,54 @@ namespace frmsaccheck
         {
             lblnet35.Text = "Checking .NET 3.5...";
             lblnet35.ForeColor = Color.Gray;
+            // Defer so the form paints before any blocking work runs
+            this.BeginInvoke(new MethodInvoker(DoNetCheck));
+        }
 
-            // Kiểm tra xem .NET 3.5 đã được bật chưa
+        private void DoNetCheck()
+        {
             if (IsNet35Installed())
             {
                 lblnet35.Text = ".NET 3.5 is already installed!";
                 lblnet35.ForeColor = Color.Green;
-                System.Threading.Thread.Sleep(1500); // Hiển thị 1.5 giây rồi chuyển form
-                SwitchToForm1();
+                ScheduleTransition(1500);
             }
             else
             {
                 lblnet35.Text = "Enabling .NET 3.5...";
                 lblnet35.ForeColor = Color.Orange;
 
-                // Thử bật .NET 3.5
-                if (EnableNet35())
+                // Run DISM on a background thread so the UI stays responsive
+                System.Threading.Thread worker = new System.Threading.Thread(() =>
                 {
-                    lblnet35.Text = ".NET 3.5 has been enabled successfully!";
-                    lblnet35.ForeColor = Color.Green;
-                    System.Threading.Thread.Sleep(1500);
-                    SwitchToForm1();
-                }
-                else
-                {
-                    lblnet35.Text = "Failed to enable .NET 3.5. Please enable it manually in Windows Features.";
-                    lblnet35.ForeColor = Color.Red;
-                }
+                    bool success = EnableNet35();
+                    this.Invoke(new MethodInvoker(() => OnEnableNet35Complete(success)));
+                });
+                worker.IsBackground = true;
+                worker.Start();
             }
+        }
+
+        private void OnEnableNet35Complete(bool success)
+        {
+            if (success)
+            {
+                lblnet35.Text = ".NET 3.5 has been enabled successfully!";
+                lblnet35.ForeColor = Color.Green;
+                ScheduleTransition(1500);
+            }
+            else
+            {
+                lblnet35.Text = "Failed to enable .NET 3.5. Please enable it manually in Windows Features.";
+                lblnet35.ForeColor = Color.Red;
+            }
+        }
+
+        private void ScheduleTransition(int delayMs)
+        {
+            System.Windows.Forms.Timer t = new System.Windows.Forms.Timer { Interval = delayMs };
+            t.Tick += (s, args) => { t.Stop(); t.Dispose(); SwitchToForm1(); };
+            t.Start();
         }
 
         private bool IsNet35Installed()
@@ -78,23 +93,24 @@ namespace frmsaccheck
         {
             try
             {
-                // Sử dụng DISM để bật .NET Framework 3.5
+                // Bug fix: Verb = "runas" is incompatible with UseShellExecute = false and was silently ignored.
+                // The application already runs as administrator, so elevation is not needed here.
                 string commandArgs = "/online /enable-feature /featurename:NetFx3 /All";
                 ProcessStartInfo psi = new ProcessStartInfo("DISM.exe", commandArgs)
                 {
                     CreateNoWindow = true,
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    Verb = "runas" // Chạy với quyền admin
+                    RedirectStandardError = true
                 };
 
                 using (Process p = Process.Start(psi))
                 {
-                    p.WaitForExit();
-
-                    // Kiểm tra lại xem có được bật không
-                    System.Threading.Thread.Sleep(2000); // Đợi registry update
+                    if (!p.WaitForExit(300000)) // 5-minute timeout for DISM
+                    {
+                        p.Kill();
+                        return false;
+                    }
                     return IsNet35Installed();
                 }
             }
@@ -107,7 +123,6 @@ namespace frmsaccheck
 
         private void SwitchToForm1()
         {
-            // Tìm Form1 đang mở hoặc tạo mới
             Form1 form1 = Application.OpenForms["Form1"] as Form1;
             if (form1 == null)
             {
@@ -118,7 +133,6 @@ namespace frmsaccheck
             form1.Focus();
             form1.BringToFront();
 
-            // Đóng form netcheck hoàn toàn
             this.Close();
         }
     }
