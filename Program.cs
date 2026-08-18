@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
@@ -26,12 +26,10 @@ namespace frmsaccheck
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
-            // Khởi động frmnetcheck trước để kiểm tra .NET 3.5
-            // Sử dụng ApplicationContext để quản lý vòng đời của ứng dụng
-            frmnetcheck netcheck = new frmnetcheck();
-            netcheck.Show();
-
-            Application.Run();
+            // Sử dụng ApplicationContext để quản lý vòng đời ứng dụng
+            // Khi form cuối cùng đóng, ứng dụng sẽ thoát hoàn toàn
+            AppContext appContext = new AppContext();
+            Application.Run(appContext);
         }
 
         /// <summary>
@@ -77,6 +75,20 @@ namespace frmsaccheck
                 );
                 Environment.Exit(1);
             }
+        }
+    }
+
+    /// <summary>
+    /// ApplicationContext để quản lý vòng đời của các forms
+    /// Khi form cuối cùng đóng, ứng dụng sẽ thoát hoàn toàn
+    /// </summary>
+    internal class AppContext : ApplicationContext
+    {
+        public AppContext()
+        {
+            // Khởi động frmnetcheck trước
+            frmnetcheck netcheck = new frmnetcheck();
+            netcheck.Show();
         }
     }
 }

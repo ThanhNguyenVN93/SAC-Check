@@ -77,11 +77,15 @@
     <Compile Include="Properties\Resources.Designer.cs">
       <AutoGen>True</AutoGen>
       <DependentUpon>Resources.resx</DependentUpon>
+      <DesignTime>True</DesignTime>
     </Compile>
+    <None Include="Add-ImageResource.ps1" />
     <None Include="app.manifest" />
     <None Include="BUILD.md" />
     <None Include="CHANGELOG.md" />
     <None Include="CONTRIBUTING.md" />
+    <None Include="DONATE_CHECKLIST.md" />
+    <None Include="DONATE_IMAGE_SETUP.md" />
     <None Include="GITHUB_SETUP.md" />
     <None Include="LICENSE" />
     <None Include="Properties\Settings.settings">
@@ -94,9 +98,12 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
     </Compile>
     <None Include="README.md" />
+    <None Include="RESOURCE_SETUP.md" />
   </ItemGroup>
   <ItemGroup>
     <Content Include=".gitignore" />
+    <Content Include="donate.png" />
+    <EmbeddedResource Include="bin\Debug\donate.png" />
     <Content Include="sac.ico" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
