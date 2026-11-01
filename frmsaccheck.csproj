@@ -103,7 +103,6 @@
   <ItemGroup>
     <Content Include=".gitignore" />
     <Content Include="donate.png" />
-    <EmbeddedResource Include="bin\Debug\donate.png" />
     <Content Include="sac.ico" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
