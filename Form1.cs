@@ -1,86 +1,64 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
+using System;
 using System.Drawing;
-using System.Linq;
-using System.Text;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
-using System.Security.Principal;
 
 namespace frmsaccheck
 {
     public partial class Form1 : Form
     {
+        private const string RegistryKeyPath = "HKLM\\SYSTEM\\CurrentControlSet\\Control\\CI\\Policy";
+        private const string RegistryValueName = "VerifiedAndReputablePolicyState";
+        private const int ProcessTimeoutMs = 30000;
+
         public Form1()
         {
             InitializeComponent();
         }
 
+        // Bug fix: Application.Run() with no form never exits on its own.
+        // Calling Application.Exit() here ensures the process terminates when Form1 closes.
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            base.OnFormClosed(e);
+            Application.Exit();
+        }
+
         private void timer1_Tick(object sender, EventArgs e)
         {
-            // Cập nhật tiêu đề Form với ngày giờ hệ thống theo múi giờ máy
             this.Text = "Smart App Control" + " " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         }
 
         private void Form1_Load(object sender, EventArgs e)
         {
-            // Enable KeyPreview để bắt sự kiện phím ESC
             this.KeyPreview = true;
             this.KeyDown += new KeyEventHandler(Form1_KeyDown);
 
-            // Nếu có quyền admin thì tự động chạy lệnh reg query và hiển thị kết quả
-            try
-            {
-                RunRegQueryAndPrint();
-            }
-            catch (Exception ex)
-            {
-                txtcmd.Text = "Failed to run reg query: " + ex.Message;
-            }
-
-            // Lấy thông tin phiên bản OS thực tế (không phụ thuộc vào manifest)
             int buildNum = GetRealOSVersion().Build;
 
             if (buildNum >= 22621)
             {
-                // Máy hiện đại, Win 11 đời mới -> Hiện thông số SAC
                 lblstatus.Text = "Smart App Control is available.";
-            }
-            else if (buildNum >= 22000)
-            {
-                // Win 11 đời đầu -> Không có SAC -> Không hỗ trợ, hiện thông báo và thoát
-                MessageBox.Show("System Not Supported!\r\nThis application requires Windows 11 Build 22621 or later.", 
-                    "Unsupported System", 
-                    MessageBoxButtons.OK, 
-                    MessageBoxIcon.Error);
-                this.Close();
-            }
-            else if (buildNum >= 10240)
-            {
-                // Windows 10 -> Không có SAC -> Không hỗ trợ, hiện thông báo và thoát
-                MessageBox.Show("System Not Supported!\r\nThis application requires Windows 11 Build 22621 or later.", 
-                    "Unsupported System", 
-                    MessageBoxButtons.OK, 
-                    MessageBoxIcon.Error);
-                this.Close();
+                try
+                {
+                    RunRegQueryAndPrint();
+                }
+                catch (Exception ex)
+                {
+                    txtcmd.Text = "Failed to run reg query: " + ex.Message;
+                }
             }
             else
             {
-                // Máy cũ (Win 7/8) -> Không hỗ trợ, hiện thông báo và thoát
-                MessageBox.Show("System Not Supported!\r\nThis application requires Windows 11 Build 22621 or later.", 
-                    "Unsupported System", 
-                    MessageBoxButtons.OK, 
+                MessageBox.Show("System Not Supported!\r\nThis application requires Windows 11 Build 22621 or later.",
+                    "Unsupported System",
+                    MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
                 this.Close();
             }
         }
-        //chạy lệnh cmd get value SAC
 
-
-        // RtlGetVersion cung cấp thông tin phiên bản chính xác từ ntdll (không bị ảnh hưởng bởi compatibility manifest)
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         private struct RTL_OSVERSIONINFOEX
         {
@@ -110,14 +88,14 @@ namespace frmsaccheck
             }
             catch
             {
-                // fall back
+                // fall back to Environment.OSVersion
             }
             return Environment.OSVersion.Version;
         }
 
         private void RunRegQueryAndPrint()
         {
-            string commandArgs = "/c reg query \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\CI\\Policy\" /v VerifiedAndReputablePolicyState";
+            string commandArgs = "/c reg query \"" + RegistryKeyPath + "\" /v " + RegistryValueName;
             ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", commandArgs)
             {
                 CreateNoWindow = true,
@@ -130,17 +108,18 @@ namespace frmsaccheck
             {
                 string output = p.StandardOutput.ReadToEnd();
                 string err = p.StandardError.ReadToEnd();
-                p.WaitForExit();
 
-                // Parse output để lấy giá trị registry
+                if (!p.WaitForExit(ProcessTimeoutMs))
+                {
+                    p.Kill();
+                    txtcmd.Text = "Command timed out while querying registry.";
+                    return;
+                }
+
                 string sacValue = ParseRegistryValue(output);
                 if (!string.IsNullOrEmpty(sacValue))
                 {
-                    // Giải mã giá trị SAC và hiển thị
-                    string statusText = DecodeSACValue(sacValue);
-                    txtcmd.Text = statusText;
-
-                    // Cập nhật trạng thái các button
+                    txtcmd.Text = DecodeSACValue(sacValue);
                     UpdateButtonStates(sacValue);
                 }
                 else if (!string.IsNullOrEmpty(err))
@@ -156,14 +135,11 @@ namespace frmsaccheck
 
         private string ParseRegistryValue(string output)
         {
-            // Tìm dòng chứa VerifiedAndReputablePolicyState
             string[] lines = output.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
             foreach (string line in lines)
             {
-                // Format: HKEY_LOCAL_MACHINE\...\Policy    VerifiedAndReputablePolicyState    REG_DWORD    0x1
-                if (line.Contains("VerifiedAndReputablePolicyState"))
+                if (line.Contains(RegistryValueName))
                 {
-                    // Lấy phần cuối cùng của dòng chứa giá trị hex (0x0, 0x1, 0x2, ...)
                     string[] parts = line.Split(new[] { " " }, StringSplitOptions.RemoveEmptyEntries);
                     if (parts.Length > 0)
                     {
@@ -182,7 +158,6 @@ namespace frmsaccheck
         {
             try
             {
-                // Chuyển từ hex string (0x0, 0x1, 0x2) thành int
                 int value = int.Parse(hexValue.Substring(2), System.Globalization.NumberStyles.HexNumber);
 
                 switch (value)
@@ -194,12 +169,12 @@ namespace frmsaccheck
                     case 0x2:
                         return "SAC Status: 0x2 (Evaluation) - Smart App Control is in evaluation mode.";
                     default:
-                        return $"SAC Status: {hexValue} - Unknown state.";
+                        return "SAC Status: " + hexValue + " - Unknown state.";
                 }
             }
             catch
             {
-                return $"SAC Status: {hexValue}";
+                return "SAC Status: " + hexValue;
             }
         }
 
@@ -211,22 +186,15 @@ namespace frmsaccheck
 
                 switch (value)
                 {
-                    case 0x0: // Tắt (Off)
+                    case 0x0: // Off
                         btnactive.Enabled = true;
-                        if (btndeactive.Enabled)
-                            btndeactive.Enabled = false;
+                        btndeactive.Enabled = false;
                         break;
 
-                    case 0x1: // Bật (On)
+                    case 0x1: // On
+                    case 0x2: // Evaluation
                         btndeactive.Enabled = true;
-                        if (btnactive.Enabled)
-                            btnactive.Enabled = false;
-                        break;
-
-                    case 0x2: // Đánh giá (Evaluation)
-                        btndeactive.Enabled = true;
-                        if (btnactive.Enabled)
-                            btnactive.Enabled = false;
+                        btnactive.Enabled = false;
                         break;
 
                     default:
@@ -235,7 +203,6 @@ namespace frmsaccheck
             }
             catch
             {
-                // Nếu parse lỗi, vô hiệu hóa cả hai button
                 btnactive.Enabled = false;
                 btndeactive.Enabled = false;
             }
@@ -247,15 +214,12 @@ namespace frmsaccheck
 
             lklinfo.Text = fullText;
 
-            // Tìm vị trí của "More detail" trong text để làm link
             string linkText = "More detail";
             int linkStart = fullText.IndexOf(linkText);
             if (linkStart != -1)
             {
-                int linkLength = linkText.Length;
-                // Tạo LinkArea - chỉ "More detail" là clickable và hiển thị màu xanh
                 lklinfo.Links.Clear();
-                lklinfo.Links.Add(linkStart, linkLength, "https://learn.microsoft.com/en-us/windows/apps/develop/smart-app-control/overview");
+                lklinfo.Links.Add(linkStart, linkText.Length, "https://learn.microsoft.com/en-us/windows/apps/develop/smart-app-control/overview");
             }
         }
 
@@ -263,7 +227,6 @@ namespace frmsaccheck
         {
             try
             {
-                // Mở URL trong trình duyệt mặc định
                 System.Diagnostics.Process.Start((string)e.Link.LinkData);
             }
             catch (Exception ex)
@@ -274,13 +237,11 @@ namespace frmsaccheck
 
         private void btnactive_Click(object sender, EventArgs e)
         {
-            // Chạy lệnh reg add để bật SAC (set value to 1)
             RunRegAddCommand(1, "enable");
         }
 
         private void btndeactive_Click(object sender, EventArgs e)
         {
-            // Chạy lệnh reg add để tắt SAC (set value to 0)
             RunRegAddCommand(0, "disable");
         }
 
@@ -288,7 +249,7 @@ namespace frmsaccheck
         {
             try
             {
-                string commandArgs = $"/c reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\CI\\Policy\" /v VerifiedAndReputablePolicyState /t REG_DWORD /d {value} /f";
+                string commandArgs = "/c reg add \"" + RegistryKeyPath + "\" /v " + RegistryValueName + " /t REG_DWORD /d " + value + " /f";
                 ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", commandArgs)
                 {
                     CreateNoWindow = true,
@@ -301,24 +262,29 @@ namespace frmsaccheck
                 {
                     string output = p.StandardOutput.ReadToEnd();
                     string err = p.StandardError.ReadToEnd();
-                    p.WaitForExit();
+
+                    if (!p.WaitForExit(ProcessTimeoutMs))
+                    {
+                        p.Kill();
+                        txtcmd.Text = "Command timed out while writing registry.";
+                        return;
+                    }
 
                     if (p.ExitCode == 0)
                     {
-                        txtcmd.Text = $"Successfully {action}d Smart App Control.";
-                        // Refresh lại trạng thái SAC value
-                        System.Threading.Thread.Sleep(500); // Đợi registry update
+                        txtcmd.Text = "Successfully " + action + "d Smart App Control.";
+                        // Registry is written synchronously; re-query immediately
                         RunRegQueryAndPrint();
                     }
                     else
                     {
-                        txtcmd.Text = $"Failed to {action} Smart App Control.\r\nError: {err}";
+                        txtcmd.Text = "Failed to " + action + " Smart App Control.\r\nError: " + err;
                     }
                 }
             }
             catch (Exception ex)
             {
-                txtcmd.Text = $"Failed to run command: {ex.Message}";
+                txtcmd.Text = "Failed to run command: " + ex.Message;
             }
         }
 
@@ -327,16 +293,13 @@ namespace frmsaccheck
             Button btn = sender as Button;
             if (btn != null)
             {
-                // Làm sáng màu nền button khi di chuột vào
-                if (btn.BackColor.ToArgb() == System.Drawing.Color.FromArgb(0, 90, 158).ToArgb())
+                if (btn.BackColor.ToArgb() == Color.FromArgb(0, 90, 158).ToArgb())
                 {
-                    // Button Active: Xanh dương -> sáng hơn
-                    btn.BackColor = System.Drawing.Color.FromArgb(0, 120, 190);
+                    btn.BackColor = Color.FromArgb(0, 120, 190);
                 }
                 else
                 {
-                    // Button Deactive và What's S.A.C: Xám -> sáng hơn
-                    btn.BackColor = System.Drawing.Color.FromArgb(70, 70, 70);
+                    btn.BackColor = Color.FromArgb(70, 70, 70);
                 }
             }
         }
@@ -346,21 +309,19 @@ namespace frmsaccheck
             Button btn = sender as Button;
             if (btn != null)
             {
-                // Phục hồi màu gốc khi rút chuột ra
                 if (btn.Name == "btnactive")
                 {
-                    btn.BackColor = System.Drawing.Color.FromArgb(0, 90, 158);
+                    btn.BackColor = Color.FromArgb(0, 90, 158);
                 }
                 else if (btn.Name == "btndeactive" || btn.Name == "btnsacmeans")
                 {
-                    btn.BackColor = System.Drawing.Color.FromArgb(51, 51, 51);
+                    btn.BackColor = Color.FromArgb(51, 51, 51);
                 }
             }
         }
 
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
-            // Nhấn ESC để thoát ứng dụng
             if (e.KeyCode == Keys.Escape)
             {
                 this.Close();
